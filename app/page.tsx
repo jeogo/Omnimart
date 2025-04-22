@@ -270,20 +270,20 @@ export default async function Home() {
             <div>
               <h3 className="font-semibold text-lg mb-3">روابط سريعة</h3>
               <ul className="space-y-2">
-                <li><a href="#" className="text-slate-300 hover:text-white">الرئيسية</a></li>
-                <li><a href="#" className="text-slate-300 hover:text-white">المنتجات</a></li>
-                <li><a href="#" className="text-slate-300 hover:text-white">عن المتجر</a></li>
-                <li><a href="#" className="text-slate-300 hover:text-white">اتصل بنا</a></li>
+                <li key="home"><a href="#" className="text-slate-300 hover:text-white">الرئيسية</a></li>
+                <li key="products"><a href="#" className="text-slate-300 hover:text-white">المنتجات</a></li>
+                <li key="about"><a href="#" className="text-slate-300 hover:text-white">عن المتجر</a></li>
+                <li key="contact"><a href="#" className="text-slate-300 hover:text-white">اتصل بنا</a></li>
               </ul>
             </div>
             <div>
               <h3 className="font-semibold text-lg mb-3">اتصل بنا</h3>
               <ul className="space-y-2">
-                <li className="flex items-center gap-2 text-slate-300">
+                <li key="phone" className="flex items-center gap-2 text-slate-300">
                   <Phone className="h-4 w-4" />
                   <span>0123456789</span>
                 </li>
-                <li className="flex items-center gap-2 text-slate-300">
+                <li key="address" className="flex items-center gap-2 text-slate-300">
                   <MapPin className="h-4 w-4" />
                   <span>الجزائر العاصمة، الجزائر</span>
                 </li>
