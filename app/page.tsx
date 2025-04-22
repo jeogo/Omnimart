@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import type { Product, Category, Discount } from "@/lib/types/entities"
-import { hasValidDiscount, getDiscountPercentage } from "@/lib/utils"
+import { hasValidDiscount, getDiscountPercentage } from "../lib/utils"
 
 export default async function Home() {
   let products: Product[] = [];

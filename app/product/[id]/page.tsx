@@ -12,9 +12,8 @@ import ColorSelector from "@/components/color-selector"
 import RelatedProducts from "@/components/related-products"
 import DiscountCountdown from "@/components/discount-countdown"
 import ProductImageGallery from "@/components/product-image-gallery"
-import { calculateDiscountedPrice, getOriginalPrice, hasValidDiscount, getDiscountPercentage } from "@/lib/utils"
+import { calculateDiscountedPrice, getOriginalPrice, hasValidDiscount, getDiscountPercentage } from "@/lib/utils" // Fixed import path
 import type { Product, Discount } from "@/lib/types/entities"
-import { ObjectId } from "mongodb"
 
 interface ProductPageProps {
   params: {
@@ -29,11 +28,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
     notFound();
   }
   
-
   try {
     // Step 1: Pre-fetch all discounts to ensure we have the complete list
     const allDiscounts = await fetchDiscounts();
-
 
     // Step 2: Fetch the product with all necessary data
     let product = await fetchProductById(productId, {
@@ -41,37 +38,20 @@ export default async function ProductPage({ params }: ProductPageProps) {
       includeCategory: true
     });
     
-    // Try alternative format if needed (MongoDB ObjectId)
-    if (!product && productId.length === 24) {
-      try {
-        const objectIdStr = new ObjectId(productId).toString();
-        product = await fetchProductById(objectIdStr, {
-          includeDiscount: true,
-          includeCategory: true
-        });
-      } catch (err) {
-      }
-    }
-
     // If product still not found, return 404
     if (!product) {
       notFound();
     }
     
-    
     // Step 3: Find matching discount - try multiple ways to match the discount
     let discountData = null;
     if (product.discountId) {
-      
       // Use multiple matching criteria to find the discount
       discountData = allDiscounts.find(d => 
         d.id === product.discountId || 
         d._id?.toString() === product.discountId ||
         d.id?.toString() === product.discountId?.toString()
       );
-      
- 
-
     }
     
     // Step 4: Process discount and calculate pricing
@@ -106,6 +86,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
           if (!isNaN(parsedEnd.getTime())) endDate = parsedEnd;
         }
       } catch (err) {
+        console.error("Error parsing discount dates:", err);
       }
       
       discountObj = {

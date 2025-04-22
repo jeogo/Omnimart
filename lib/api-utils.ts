@@ -1,47 +1,18 @@
-import { getDb } from "@/lib/db";
-import {
-  mapMongoCategoryToCategory,
-  mapMongoDiscountToDiscount,
-  mapMongoOrderToOrder,
-  enrichProductsWithDiscounts,
-  enrichProductsWithCategories,
-} from "@/lib/data-mapper";
 import type { Product, Category, Discount, Order } from "@/lib/types/entities";
-import { ObjectId } from "mongodb";
+
+const API_BASE_URL = 'https://omnimart-api.onrender.com';
 
 /**
  * Fetch all discounts
  */
 export async function fetchDiscounts(): Promise<Discount[]> {
   try {
-    const db = await getDb();
-
-    // Check if the 'discounts' collection exists
-    const collections = await db
-      .listCollections({ name: "discounts" })
-      .toArray();
-    if (collections.length === 0) {
-      return [];
+    const response = await fetch(`${API_BASE_URL}/api/discounts`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch discounts: ${response.status}`);
     }
-
-    // Fetch discounts
-    const discounts = await db.collection("discounts").find({}).toArray();
-
-    // Map to Discount interface
-    return discounts.map((doc) => ({
-      _id: doc._id || null,
-      id: doc._id?.toString() || doc.id || "",
-      name: doc.name || "خصم",
-      percentage: doc.percentage || 0,
-      validFrom: doc.validFrom || new Date(),
-      validTo: doc.validTo || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      type: doc.type || "sale",
-      applicableProducts: doc.applicableProducts || [],
-      applicableCategories: doc.applicableCategories || [],
-      minPurchase: doc.minPurchase || 0,
-      code: doc.code || "",
-      isActive: doc.isActive !== false,
-    }));
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error("Error fetching discounts:", error);
     return [];
@@ -52,36 +23,16 @@ export async function fetchDiscounts(): Promise<Discount[]> {
  * Fetch a single discount by ID
  */
 export async function fetchDiscountById(id: string): Promise<Discount | null> {
-  if (!id) return null;
-
   try {
-    const db = await getDb();
-
-    // Try to find discount by ID
-    const discountDoc = await db.collection("discounts").findOne({
-      $or: [{ id: id }],
-    });
-
-    if (!discountDoc) {
-      return null;
+    const response = await fetch(`${API_BASE_URL}/api/discounts/${id}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
+      }
+      throw new Error(`Failed to fetch discount: ${response.status}`);
     }
-
-    // Map to Discount interface
-    return {
-      _id: discountDoc._id || null,
-      id: discountDoc._id?.toString() || discountDoc.id || "",
-      name: discountDoc.name || "خصم",
-      percentage: discountDoc.percentage || 0,
-      validFrom: discountDoc.validFrom || new Date(),
-      validTo:
-        discountDoc.validTo || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      type: discountDoc.type || "sale",
-      applicableProducts: discountDoc.applicableProducts || [],
-      applicableCategories: discountDoc.applicableCategories || [],
-      minPurchase: discountDoc.minPurchase || 0,
-      code: discountDoc.code || "",
-      isActive: discountDoc.isActive !== false,
-    };
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error(`Error fetching discount ${id}:`, error);
     return null;
@@ -91,58 +42,27 @@ export async function fetchDiscountById(id: string): Promise<Discount | null> {
 /**
  * Fetch all products with optional category and discount info
  */
-export async function fetchProducts(
-  options: {
-    includeDiscounts?: boolean;
-    includeCategories?: boolean;
-    limit?: number;
-    categoryId?: string;
-    isNew?: boolean;
-    hasDiscount?: boolean;
-  } = {}
-): Promise<Product[]> {
+export async function fetchProducts(options: any = {}): Promise<Product[]> {
   try {
-    const db = await getDb();
-
-    // Build query based on options
-    const query: any = {};
-    if (options.categoryId) query.categoryId = options.categoryId;
-    if (options.isNew) query.isNewProduct = true;
-    if (options.hasDiscount) query.discountId = { $exists: true, $ne: null };
-
-    // Fetch products
-    const productsCollection = db.collection("products");
-    let productsCursor = productsCollection.find(query);
-
-    // Apply limit if specified
-    if (options.limit) {
-      productsCursor = productsCursor.limit(options.limit);
+    // Build query parameters
+    const queryParams = new URLSearchParams();
+    
+    if (options.categoryId) queryParams.append('categoryId', options.categoryId);
+    if (options.isNew) queryParams.append('isNew', 'true');
+    if (options.hasDiscount) queryParams.append('hasDiscount', 'true');
+    if (options.limit) queryParams.append('limit', options.limit.toString());
+    if (options.includeDiscounts) queryParams.append('includeDiscounts', 'true');
+    if (options.includeCategories) queryParams.append('includeCategories', 'true');
+    
+    const url = `${API_BASE_URL}/api/products?${queryParams.toString()}`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch products: ${response.status}`);
     }
-
-    // Get array of documents
-    const productDocs = await productsCursor.toArray();
-
-    // Map to Product interface
-    let products = productDocs.map((doc, idx) => {
-      const mapped = mapMongoProductToProduct(doc);
-      return mapped;
-    });
-
-    // Enrich with discount info if requested
-    if (options.includeDiscounts) {
-      const discounts = await fetchDiscounts();
-      products = enrichProductsWithDiscounts(products, discounts);
-  
-    }
-
-    // Enrich with category info if requested
-    if (options.includeCategories) {
-      const categories = await fetchCategories();
-      products = enrichProductsWithCategories(products, categories);
-   
-    }
-
-    return products;
+    
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error("Error fetching products:", error);
     return [];
@@ -152,86 +72,26 @@ export async function fetchProducts(
 /**
  * Fetch a single product by ID
  */
-export async function fetchProductById(
-  id: string,
-  options: { includeDiscount?: boolean; includeCategory?: boolean } = {}
-): Promise<Product | null> {
+export async function fetchProductById(id: string, options: any = {}): Promise<Product | null> {
   try {
-    const db = await getDb();
-
-    // Try multiple query approaches to find the product
-    let productDoc = null;
-
-    // First: Try with the original string ID
-    productDoc = await db.collection("products").findOne({ id: id });
- 
-
-    // Second: Try with _id if not found
-    if (!productDoc) {
-      try {
-        // Try with string literal converted to ObjectId
-        const objectId = new ObjectId(id);
-        productDoc = await db.collection("products").findOne({ _id: objectId });
-     
-      } catch (error) {
-        console.log("Error when searching by _id string:", error);
+    // Build query parameters
+    const queryParams = new URLSearchParams();
+    
+    if (options.includeDiscount) queryParams.append('includeDiscount', 'true');
+    if (options.includeCategory) queryParams.append('includeCategory', 'true');
+    
+    const url = `${API_BASE_URL}/api/products/${id}?${queryParams.toString()}`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
       }
+      throw new Error(`Failed to fetch product: ${response.status}`);
     }
-
-    // Third: Try with MongoDB ObjectId if not found yet
-    if (!productDoc && id.length === 24) {
-      try {
-        const objectId = new ObjectId(id);
-        productDoc = await db.collection("products").findOne({ _id: objectId });
-        if (productDoc) {
-        }
-      } catch (error) {
-        console.log("Error when searching by ObjectId:", error);
-      }
-    }
-
-    // Check if we found anything after all our attempts
-    if (!productDoc) {
-      console.log(`Product not found with ID: ${id}`);
-      return null;
-    }
-
-    // Map to Product interface
-    let product = mapMongoProductToProduct(productDoc);
-
-    // Ensure ID is always available in string format
-    product.id = product.id || productDoc._id?.toString() || id;
-
-    // Fetch and apply discount if requested
-    if (options.includeDiscount && product.discountId) {
-   
-      const discount = await fetchDiscountById(product.discountId);
-
-      if (discount) {
-        console.log(
-          `[fetchProductById] Found discount: ${discount.name} (${discount.percentage}%)`
-        );
-
-        // Update product with discount info
-        product.discount = {
-          name: discount.name,
-          percentage: discount.percentage,
-          startDate: discount.validFrom.toISOString(),
-          endDate: discount.validTo.toISOString(),
-          type: discount.type || "sale",
-        };
-      }
-    }
-
-    // Fetch and apply category if requested
-    if (options.includeCategory && product.categoryId) {
-      const category = await fetchCategoryById(product.categoryId);
-      if (category) {
-        product.category = category.name;
-      }
-    }
-
-    return product;
+    
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error(`Error fetching product ${id}:`, error);
     return null;
@@ -239,45 +99,16 @@ export async function fetchProductById(
 }
 
 /**
- * Convert MongoDB document to Product interface
- */
-function mapMongoProductToProduct(doc: any): Product {
-  // Make sure _id is converted to string id if not already set
-  const id = doc.id || (doc._id ? doc._id.toString() : null);
-
-  return {
-    id: id,
-    name: doc.name || "Untitled Product",
-    description: doc.description || "",
-    price: doc.price || 0,
-    oldPrice: doc.oldPrice,
-    categoryId: doc.categoryId || "",
-    category: doc.category || "",
-    images: doc.images || [],
-    image: doc.image || null,
-    features: doc.features || [],
-    material: doc.material || "",
-    care: doc.care || "",
-    sizes: doc.sizes || [],
-    colors: doc.colors || null,
-    isNew: doc.isNew || false,
-    discount: doc.discount || null,
-    rating: doc.rating || 0,
-    reviews: doc.reviews || 0,
-    createdAt: doc.createdAt || new Date(),
-    updatedAt: doc.updatedAt || new Date(),
-    discountId: doc.discountId || null,
-  };
-}
-
-/**
  * Fetch all categories
  */
 export async function fetchCategories(): Promise<Category[]> {
   try {
-    const db = await getDb();
-    const categoryDocs = await db.collection("categories").find({}).toArray();
-    return categoryDocs.map(mapMongoCategoryToCategory);
+    const response = await fetch(`${API_BASE_URL}/api/categories`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch categories: ${response.status}`);
+    }
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error("Error fetching categories:", error);
     return [];
@@ -289,29 +120,15 @@ export async function fetchCategories(): Promise<Category[]> {
  */
 export async function fetchCategoryById(id: string): Promise<Category | null> {
   try {
-    const db = await getDb();
-    
-    // Try to convert string ID to ObjectId if it looks like a MongoDB ID
-    let categoryDoc = null;
-    if (id.length === 24) {
-      try {
-        const objectId = new ObjectId(id);
-        categoryDoc = await db.collection("categories").findOne({ _id: objectId });
-      } catch (error) {
-        console.log("Error converting to ObjectId:", error);
+    const response = await fetch(`${API_BASE_URL}/api/categories/${id}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
       }
+      throw new Error(`Failed to fetch category: ${response.status}`);
     }
-    
-    // If not found with ObjectId, try with string ID
-    if (!categoryDoc) {
-      categoryDoc = await db.collection("categories").findOne({ id: id });
-    }
-
-    if (!categoryDoc) {
-      return null;
-    }
-
-    return mapMongoCategoryToCategory(categoryDoc);
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error(`Error fetching category ${id}:`, error);
     return null;
@@ -323,9 +140,12 @@ export async function fetchCategoryById(id: string): Promise<Category | null> {
  */
 export async function fetchOrders(): Promise<Order[]> {
   try {
-    const db = await getDb();
-    const orderDocs = await db.collection("orders").find({}).toArray();
-    return orderDocs.map(mapMongoOrderToOrder);
+    const response = await fetch(`${API_BASE_URL}/api/orders`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch orders: ${response.status}`);
+    }
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error("Error fetching orders:", error);
     return [];
@@ -337,29 +157,15 @@ export async function fetchOrders(): Promise<Order[]> {
  */
 export async function fetchOrderById(id: string): Promise<Order | null> {
   try {
-    const db = await getDb();
-    
-    // Try to convert string ID to ObjectId if it looks like a MongoDB ID
-    let orderDoc = null;
-    if (id.length === 24) {
-      try {
-        const objectId = new ObjectId(id);
-        orderDoc = await db.collection("orders").findOne({ _id: objectId });
-      } catch (error) {
-        console.log("Error converting to ObjectId:", error);
+    const response = await fetch(`${API_BASE_URL}/api/orders/${id}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
       }
+      throw new Error(`Failed to fetch order: ${response.status}`);
     }
-    
-    // If not found with ObjectId, try with string ID
-    if (!orderDoc) {
-      orderDoc = await db.collection("orders").findOne({ id: id });
-    }
-
-    if (!orderDoc) {
-      return null;
-    }
-
-    return mapMongoOrderToOrder(orderDoc);
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error(`Error fetching order ${id}:`, error);
     return null;
@@ -371,24 +177,20 @@ export async function fetchOrderById(id: string): Promise<Order | null> {
  */
 export async function createOrder(orderData: Order): Promise<Order> {
   try {
-    console.log("Creating order:", orderData);
-
-    const db = await getDb();
-
-    // Ensure we have a valid date object
-    if (typeof orderData.createdAt === "string") {
-      orderData.createdAt = new Date(orderData.createdAt);
+    const response = await fetch(`${API_BASE_URL}/api/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(orderData),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to create order: ${response.status}`);
     }
-
-    // Insert order into database
-    const result = await db.collection("orders").insertOne(orderData);
-
-    console.log("Order created successfully:", result);
-
-    return {
-      ...orderData,
-      id: result.insertedId.toString(),
-    };
+    
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error("Error creating order:", error);
     throw error;

@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import type { Product, Order } from "@/lib/types/entities"
+import { createOrder } from "@/lib/api-utils"
 
 // Inline shipping cost utility
 function getShippingCost(wilaya: string): number {
@@ -222,19 +223,8 @@ export default function OrderForm({
       };
 
       
-      // Use the API route instead of direct MongoDB access
-      const response = await fetch('/api/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
-      }
-      
+      // Use the API utility directly instead of the API route
+      const createdOrder = await createOrder(orderData);
       
       // Show confirmation dialog with order details
       setOrderDetails({
