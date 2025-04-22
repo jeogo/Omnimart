@@ -155,10 +155,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
               <Badge variant="outline" className="text-xs">
                 {product.category}
               </Badge>
-              <a href="tel:+213123456789" className="flex items-center gap-1 text-sm font-medium">
-                <Phone className="h-4 w-4 text-primary" />
-                <span>0123456789</span>
-              </a>
+          
             </div>
           </div>
         </header>

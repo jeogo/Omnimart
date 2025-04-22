@@ -7,12 +7,24 @@ let dbInstance: Db | null = null;
 let isConnecting = false;
 let connectionPromise: Promise<Db> | null = null;
 
+// Health check function to verify connection
+async function isDbHealthy(): Promise<boolean> {
+  try {
+    if (!dbInstance) return false;
+    // Ping the database
+    await dbInstance.command({ ping: 1 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function getDb(): Promise<Db> {
-  // If we already have a database instance, return it
-  if (dbInstance) {
+  // If we already have a healthy database instance, return it
+  if (dbInstance && await isDbHealthy()) {
     return dbInstance;
   }
-  
+
   // If we're already in the process of connecting, wait for that connection
   if (isConnecting && connectionPromise) {
     return connectionPromise;
@@ -20,53 +32,58 @@ export async function getDb(): Promise<Db> {
 
   // Otherwise, create a new connection
   isConnecting = true;
-  
-  // Create a promise to connect to the database
+
   connectionPromise = new Promise<Db>(async (resolve, reject) => {
     try {
-      // Create a new client
+      // If a client exists but is not connected, close it first
+      if (client) {
+        try {
+          await client.close();
+        } catch (e) {
+          // ignore
+        }
+        client = null;
+        dbInstance = null;
+      }
+
       client = new MongoClient(uri, {
         serverApi: {
           version: ServerApiVersion.v1,
           strict: true,
           deprecationErrors: true,
-        }
+        },
+        // Add options for production reliability
+        maxPoolSize: 10,
+        minPoolSize: 1,
+        connectTimeoutMS: 10000,
+        socketTimeoutMS: 20000,
+        retryWrites: true,
       });
-      
+
       console.log("Connecting to MongoDB...");
-      
-      // Connect to the MongoDB server
+
       await client.connect();
-      console.log("Connected to MongoDB server");
-      
-      // Get the database instance - use "test" as specified
       dbInstance = client.db("test");
-      console.log("Database 'test' selected");
-      
-      // We're no longer connecting
+      console.log("Connected to MongoDB server and selected database 'test'");
+
       isConnecting = false;
-      
-      // Return the database instance
       resolve(dbInstance);
     } catch (error) {
       console.error("Failed to connect to MongoDB:", error);
-      
+
       // Clean up the failed connection
       if (client) {
-        await client.close().catch(console.error);
+        await client.close().catch(() => {});
       }
-      
-      // Reset connection state
       client = null;
       dbInstance = null;
       isConnecting = false;
       connectionPromise = null;
-      
-      // Reject with the error
+
       reject(error);
     }
   });
-  
+
   return connectionPromise;
 }
 
@@ -84,6 +101,11 @@ export async function closeDbConnection(): Promise<void> {
 
 // Handle process termination
 process.on('SIGINT', async () => {
+  await closeDbConnection();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
   await closeDbConnection();
   process.exit(0);
 });

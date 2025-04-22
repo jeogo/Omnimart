@@ -101,10 +101,7 @@ export default async function Home() {
             </a>
           </div>
           <nav className="flex items-center gap-4">
-            <a href="tel:+213123456789" className="flex items-center gap-1.5 text-sm font-medium bg-primary/10 text-primary px-3 py-1 rounded-full hover:bg-primary/20 transition-colors">
-              <Phone className="h-4 w-4" />
-              <span className="hidden sm:inline">0123456789</span>
-            </a>
+       
           </nav>
         </div>
       </header>
