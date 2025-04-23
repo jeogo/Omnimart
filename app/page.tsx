@@ -1,4 +1,4 @@
-import { Phone, Truck, Clock, ShoppingBag, MapPin, Tag } from "lucide-react"
+import { Phone, Truck, Clock, ShoppingBag, MapPin, Tag, Mail } from "lucide-react"
 import { fetchProducts, fetchCategories, fetchDiscounts } from "@/lib/api-utils"
 import ProductCard from "@/components/product-card"
 import { Card, CardContent } from "@/components/ui/card"
@@ -13,34 +13,46 @@ export default async function Home() {
   let discounts: Discount[] = [];
 
   try {
+    // Improved error handling for API calls
+    const productsPromise = fetchProducts({ includeDiscounts: true, includeCategories: true });
+    const categoriesPromise = fetchCategories();
+    const discountsPromise = fetchDiscounts();
+    
+    // Wait for all promises to resolve
     const [productsData, categoriesData, discountsData] = await Promise.all([
-      fetchProducts({ includeDiscounts: true, includeCategories: true }),
-      fetchCategories(),
-      fetchDiscounts()
+      productsPromise, 
+      categoriesPromise, 
+      discountsPromise
     ]);
-    products = productsData;
-    categories = categoriesData;
-    discounts = discountsData;
+    
+    // Ensure we have arrays, even if the API returns null or undefined
+    products = Array.isArray(productsData) ? productsData : [];
+    categories = Array.isArray(categoriesData) ? categoriesData : [];
+    discounts = Array.isArray(discountsData) ? discountsData : [];
     
   } catch (error) {
     console.error("Error in Home component:", error);
+    // Set default empty arrays to prevent runtime errors
+    products = [];
+    categories = [];
+    discounts = [];
   }
 
-  // Enhance products with discount info
-  const processedProducts = products.map(product => {
-    // Find matching discount directly from the discounts array
+  // Enhance products with discount info and ensure all products have stable IDs
+  const processedProducts = products.map((product, idx) => {
+    // Ensure product has a stable ID for React keys
+    const stableId = product.id || product!?._id || `temp-product-${idx}`;
     
-    // Check all possible ID formats
+    // Find matching discount directly from the discounts array
     let matchingDiscount = null;
     if (product.discountId) {
-      // Try direct matching
-      matchingDiscount = discounts.find(d => 
-        d.id === product.discountId || 
-        d._id === product.discountId ||
-        d.id?.toString() === product.discountId?.toString()
-      );
-      
-
+      // Try direct matching with safe toString() calls
+      matchingDiscount = discounts.find(d => {
+        const discountId = product.discountId?.toString();
+        const dId = d.id?.toString();
+        const d_Id = d._id?.toString();
+        return dId === discountId || d_Id === discountId;
+      });
     }
     
     // Determine if product has valid discount
@@ -50,8 +62,8 @@ export default async function Home() {
     const discountPercent = hasDiscount && matchingDiscount ? matchingDiscount.percentage : 0;
     
     // Calculate original and discounted prices
-    let originalPrice = product.price;
-    let discountedPrice = product.price;
+    let originalPrice = product.price || 0; // Ensure price is a number
+    let discountedPrice = originalPrice;
     
     if (hasDiscount && discountPercent > 0) {
       // Apply the discount percentage to calculate the discounted price
@@ -64,6 +76,8 @@ export default async function Home() {
 
     return {
       ...product,
+      // Ensure product has a stable ID
+      id: stableId,
       processedData: {
         hasDiscount,
         discountPercent,
@@ -76,19 +90,22 @@ export default async function Home() {
     };
   });
 
-  // Group products by category
+  // Group products by category (with safety checks)
   const productsByCategory = categories.reduce((acc: Record<string, any[]>, category) => {
-    acc[category.id] = processedProducts.filter(p => p.categoryId === category.id);
+    const categoryId = category.id || category._id;
+    if (categoryId) {
+      acc[categoryId] = processedProducts.filter(p => p.categoryId === categoryId);
+    }
     return acc;
   }, {});
 
-  // Best sellers: top 4 by rating
+  // Best sellers: top 4 by rating (safely)
   const bestsellers = [...processedProducts]
     .sort((a, b) => (b.rating || 0) - (a.rating || 0))
     .slice(0, 4);
 
   // Discounted products
-  const discountedProducts = processedProducts.filter(p => p.processedData.hasDiscount);
+  const discountedProducts = processedProducts.filter(p => p.processedData?.hasDiscount);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -101,7 +118,6 @@ export default async function Home() {
             </a>
           </div>
           <nav className="flex items-center gap-4">
-       
           </nav>
         </div>
       </header>
@@ -118,11 +134,14 @@ export default async function Home() {
             </div>
             {bestsellers.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {bestsellers.map((product, index) => (
-                  <div key={product.id} className="animate-fadeIn" style={{ animationDelay: `${(index + 1) * 100}ms` }}>
-                    <ProductCard product={product} />
-                  </div>
-                ))}
+                {bestsellers.map((product, index) => {
+                  const productKey = `bestseller-${product.id || product._id || index}`;
+                  return (
+                    <div key={productKey} className="animate-fadeIn" style={{ animationDelay: `${(index + 1) * 100}ms` }}>
+                      <ProductCard product={product} />
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-12 bg-gray-100 rounded-lg">
@@ -150,27 +169,33 @@ export default async function Home() {
                   الكل
                   <Badge className="mr-2 bg-primary/10 text-primary hover:bg-primary/20 ml-2">{products.length}</Badge>
                 </TabsTrigger>
-                {categories.map(category => (
-                  <TabsTrigger
-                    key={category.id}
-                    value={category.id}
-                    className="data-[state=active]:text-primary data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4 py-2 text-sm font-medium border-b-2 border-transparent"
-                  >
-                    {category.name}
-                    <Badge className="bg-primary/10 text-primary hover:bg-primary/20 ml-2">
-                      {productsByCategory[category.id]?.length || 0}
-                    </Badge>
-                  </TabsTrigger>
-                ))}
+                {categories.map(category => {
+                  const categoryKey = `category-${category.id || category._id}`;
+                  return (
+                    <TabsTrigger
+                      key={categoryKey}
+                      value={category.id}
+                      className="data-[state=active]:text-primary data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4 py-2 text-sm font-medium border-b-2 border-transparent"
+                    >
+                      {category.name}
+                      <Badge className="bg-primary/10 text-primary hover:bg-primary/20 ml-2">
+                        {productsByCategory[category.id]?.length || 0}
+                      </Badge>
+                    </TabsTrigger>
+                  );
+                })}
               </TabsList>
               <TabsContent value="all" className="mt-0">
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-y-8">
                   {processedProducts.length > 0 ? (
-                    processedProducts.map((product, index) => (
-                      <div key={product.id} className="animate-fadeIn" style={{ animationDelay: `${(index % 5 + 1) * 100}ms` }}>
-                        <ProductCard product={product} />
-                      </div>
-                    ))
+                    processedProducts.map((product, index) => {
+                      const productKey = `all-${product.id || product._id || index}`;
+                      return (
+                        <div key={productKey} className="animate-fadeIn" style={{ animationDelay: `${(index % 5 + 1) * 100}ms` }}>
+                          <ProductCard product={product} />
+                        </div>
+                      );
+                    })
                   ) : (
                     <div className="col-span-full text-center py-12">
                       <p className="text-gray-500">لا توجد منتجات متاحة حالياً</p>
@@ -178,23 +203,29 @@ export default async function Home() {
                   )}
                 </div>
               </TabsContent>
-              {categories.map(category => (
-                <TabsContent key={category.id} value={category.id} className="mt-0">
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-y-8">
-                    {productsByCategory[category.id]?.length > 0 ? (
-                      productsByCategory[category.id].map((product, index) => (
-                        <div key={product.id} className="animate-fadeIn" style={{ animationDelay: `${(index % 5 + 1) * 100}ms` }}>
-                          <ProductCard product={product} />
+              {categories.map(category => {
+                const categoryKey = `tab-${category.id || category._id}`;
+                return (
+                  <TabsContent key={categoryKey} value={category.id} className="mt-0">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-y-8">
+                      {productsByCategory[category.id]?.length > 0 ? (
+                        productsByCategory[category.id].map((product, index) => {
+                          const productKey = `cat-${category.id}-${product.id || product._id || index}`;
+                          return (
+                            <div key={productKey} className="animate-fadeIn" style={{ animationDelay: `${(index % 5 + 1) * 100}ms` }}>
+                              <ProductCard product={product} />
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="col-span-full text-center py-12">
+                          <p className="text-gray-500">لا توجد منتجات في هذه الفئة حالياً</p>
                         </div>
-                      ))
-                    ) : (
-                      <div className="col-span-full text-center py-12">
-                        <p className="text-gray-500">لا توجد منتجات في هذه الفئة حالياً</p>
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-              ))}
+                      )}
+                    </div>
+                  </TabsContent>
+                );
+              })}
             </Tabs>
           ) : (
             <div className="text-center py-12 bg-gray-100 rounded-lg">
@@ -218,20 +249,23 @@ export default async function Home() {
             </div>
             {discountedProducts.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {discountedProducts.slice(0, 4).map((product, index) => (
-                  <div key={product.id} className="animate-fadeIn" style={{ animationDelay: `${(index + 1) * 100}ms` }}>
-                    <div className="relative">
-                      {product.processedData.matchingDiscount && (
-                        <div className="absolute right-2 bottom-2 z-10">
-                          <Badge className="bg-amber-500 text-white hover:bg-amber-600">
-                            {product.processedData.matchingDiscount.name}
-                          </Badge>
-                        </div>
-                      )}
-                      <ProductCard product={product} />
+                {discountedProducts.slice(0, 4).map((product, index) => {
+                  const productKey = `discount-${product.id || product._id || index}`;
+                  return (
+                    <div key={productKey} className="animate-fadeIn" style={{ animationDelay: `${(index + 1) * 100}ms` }}>
+                      <div className="relative">
+                        {product.processedData.matchingDiscount && (
+                          <div className="absolute right-2 bottom-2 z-10">
+                            <Badge className="bg-amber-500 text-white hover:bg-amber-600">
+                              {product.processedData.matchingDiscount.name}
+                            </Badge>
+                          </div>
+                        )}
+                        <ProductCard product={product} />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-12 bg-white/50 rounded-lg">
@@ -244,57 +278,68 @@ export default async function Home() {
         </section>
       </main>
       <footer className="border-t bg-slate-900 text-white py-10">
-        <div className="container px-4 md:px-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <ShoppingBag className="h-6 w-6 text-primary" />
-                <span className="text-xl font-bold">OmniMart</span>
-              </div>
-              <p className="text-sm text-slate-300 mb-4">
-                متجر متخصص في الأزياء الرجالية العصرية بأسعار مناسبة وجودة عالية
-              </p>
-              <div className="flex items-center gap-4">
-                <a href="#" className="text-slate-300 hover:text-white">
-                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"></path>
-                  </svg>
-                </a>
-                <a href="#" className="text-slate-300 hover:text-white">
-                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12.315 2c2.43 0 2.784.013 3.808.06 1.064.049 1.791.218 2.427.465a4.902 4.902 0 01 1.772 1.153 4.902 4.902 0 01 1.153 1.772c.247.636.416 1.363.465 2.427.048 1.067.06 1.407.06 4.123v.08c0 2.643-.012 2.987-.06 4.043-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.067.048-1.407.06-4.123.06h-.08c-2.643 0-2.987-.012-4.043-.06-1.064-.049-1.791-.218-2.427-.465a4.902 4.902 0 01-1.772-1.153 4.902 4.902 0 01-1.153-1.772c-.247-.636-.416-1.363-.465-2.427-.047-1.024-.06-1.379-.06-3.808v-.63c0-2.43.013-2.784.06-3.808.049-1.064.218-1.791.465-2.427a4.902 4.902 0 01 1.153-1.772A4.902 4.902 0 01 5.45 2.525c.636-.247 1.363-.416 2.427-.465C8.901 2.013 9.256 2 11.685 2h.63z"></path>
-                  </svg>
-                </a>
-              </div>
-            </div>
-            <div>
-              <h3 className="font-semibold text-lg mb-3">روابط سريعة</h3>
-              <ul className="space-y-2">
-                <li key="home"><a href="#" className="text-slate-300 hover:text-white">الرئيسية</a></li>
-                <li key="products"><a href="#" className="text-slate-300 hover:text-white">المنتجات</a></li>
-                <li key="about"><a href="#" className="text-slate-300 hover:text-white">عن المتجر</a></li>
-                <li key="contact"><a href="#" className="text-slate-300 hover:text-white">اتصل بنا</a></li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-semibold text-lg mb-3">اتصل بنا</h3>
-              <ul className="space-y-2">
-                <li key="phone" className="flex items-center gap-2 text-slate-300">
-                  <Phone className="h-4 w-4" />
-                  <span>0123456789</span>
-                </li>
-                <li key="address" className="flex items-center gap-2 text-slate-300">
-                  <MapPin className="h-4 w-4" />
-                  <span>الجزائر العاصمة، الجزائر</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-slate-800 mt-8 pt-8 text-center text-sm text-slate-400">
-            <p>© {new Date().getFullYear()} OmniMart. جميع الحقوق محفوظة.</p>
-          </div>
+  <div className="container px-4 md:px-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <ShoppingBag className="h-6 w-6 text-primary" />
+          <span className="text-xl font-bold">OmniMart</span>
         </div>
-      </footer>
+        <p className="text-sm text-slate-300 mb-4">
+          متجر متخصص في الأزياء الرجالية العصرية بأسعار مناسبة وجودة عالية
+        </p>
+        <div className="flex items-center gap-4">
+          <a href="#" className="text-slate-300 hover:text-white" aria-label="Facebook">
+            <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"></path>
+            </svg>
+          </a>
+          <a href="#" className="text-slate-300 hover:text-white" aria-label="Instagram">
+            <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12.315 2c2.43 0 2.784.013 3.808.06 1.064.049 1.791.218 2.427.465a4.902 4.902 0 01 1.772 1.153 4.902 4.902 0 01 1.153 1.772c.247.636.416 1.363.465 2.427.048 1.067.06 1.407.06 4.123v.08c0 2.643-.012 2.987-.06 4.043-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.067.048-1.407.06-4.123.06h-.08c-2.643 0-2.987-.012-4.043-.06-1.064-.049-1.791-.218-2.427-.465a4.902 4.902 0 01-1.772-1.153 4.902 4.902 0 01-1.153-1.772c-.247-.636-.416-1.363-.465-2.427-.047-1.024-.06-1.379-.06-3.808v-.63c0-2.43.013-2.784.06-3.808.049-1.064.218-1.791.465-2.427a4.902 4.902 0 01 1.153-1.772A4.902 4.902 0 01 5.45 2.525c.636-.247 1.363-.416 2.427-.465C8.901 2.013 9.256 2 11.685 2h.63z"></path>
+            </svg>
+          </a>
+        </div>
+      </div>
+      <div>
+        <h3 className="font-semibold text-lg mb-3">روابط سريعة</h3>
+        <ul className="space-y-2">
+          {/* Use uniquely identifiable items in the list */}
+          {[
+            { id: "home", label: "الرئيسية", href: "#" },
+            { id: "products", label: "المنتجات", href: "#" },
+            { id: "about", label: "عن المتجر", href: "#" },
+            { id: "contact", label: "اتصل بنا", href: "#" }
+          ].map(item => (
+            <li key={item.id}>
+              <a href={item.href} className="text-slate-300 hover:text-white">
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div>
+        <h3 className="font-semibold text-lg mb-3">اتصل بنا</h3>
+        <ul className="space-y-2">
+          {/* Use uniquely identifiable items in the list */}
+          {[
+            { id: "phone", icon: <Phone className="h-4 w-4" />, text: "0123456789" },
+            { id: "address", icon: <MapPin className="h-4 w-4" />, text: "الجزائر العاصمة، الجزائر" }
+          ].map(item => (
+            <li key={item.id} className="flex items-center gap-2 text-slate-300">
+              {item.icon}
+              <span>{item.text}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+    <div className="border-t border-slate-800 mt-8 pt-8 text-center text-sm text-slate-400">
+      <p>© {new Date().getFullYear()} OmniMart. جميع الحقوق محفوظة.</p>
+    </div>
+  </div>
+</footer>
     </div>
   )
 }

@@ -22,8 +22,8 @@ interface ProductPageProps {
 }
 
 export default async function ProductPage({ params }: ProductPageProps) {
-  // Ensure we have a product ID
-  const productId = params?.id;
+  // Ensure we have a product ID and properly handle params as an async value
+  const productId = params?.id ? String(params.id) : null;
   if (!productId) {
     notFound();
   }

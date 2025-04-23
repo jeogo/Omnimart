@@ -1,6 +1,7 @@
 // واجهات البيانات الخاصة بالـ Products، Orders، Categories، Discounts
 
 export interface Product {
+  _id: string;
   id: string;
   name: string;
   description: string;
@@ -53,6 +54,7 @@ export interface Order {
 }
 
 export interface Category {
+  _id: string;
   id: string;
   name: string;
   description?: string;
