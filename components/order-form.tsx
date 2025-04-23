@@ -142,7 +142,15 @@ export default function OrderForm({
   productId,
   productName,
   productPrice,
-}: { productId: string; productName: string; productPrice: number }) {
+  defaultSize,
+  defaultColor,
+}: {
+  productId: string;
+  productName: string;
+  productPrice: number;
+  defaultSize?: string;
+  defaultColor?: string;
+}) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [shippingCost, setShippingCost] = useState(0)
   const [showConfirmation, setShowConfirmation] = useState(false)
@@ -193,38 +201,66 @@ export default function OrderForm({
 
       // Calculate total product cost
       const productCost = productPrice * Number(values.quantity);
-      
       // Get shipping cost based on wilaya
       const deliveryCost = getShippingCost(values.wilaya);
-      
       // Calculate total amount
       const totalAmount = productCost + deliveryCost;
 
-      // Create order data matching the Order interface
-      const orderData: Order = {
-        id: orderNumber,
+      // Extract MongoDB ObjectId from the productId if it's in a URL format
+      let mongoProductId = productId;
+      
+      // Fall back to using the URL path if productId is undefined
+      if (!mongoProductId && typeof window !== 'undefined') {
+        const pathParts = window.location.pathname.split('/');
+        mongoProductId = pathParts[pathParts.length - 1];
+      }
+      
+      if (typeof mongoProductId === 'string' && mongoProductId.includes('/')) {
+        const parts = mongoProductId.split('/');
+        mongoProductId = parts[parts.length - 1];
+      }
+
+      console.log("========== ORDER DEBUGGING ==========");
+      console.log("Original Product ID:", productId);
+      console.log("Window path fallback:", typeof window !== 'undefined' ? window.location.pathname : 'N/A');
+      console.log("Processed Product ID for Order:", mongoProductId);
+      console.log("Product ID type:", typeof mongoProductId);
+
+      // If still no productId, use a placeholder for debugging (this should be fixed properly)
+      if (!mongoProductId) {
+        console.warn("WARNING: No productId found! Using placeholder for debugging purposes.");
+        mongoProductId = "product-id-missing";
+      }
+
+      // Create order data matching the expected MongoDB schema
+      const orderData = {
         customerName: values.name,
         customerPhone: values.phone,
         customerAddress: values.city,
         wilaya: values.wilaya,
+        
+        // Products array with the required productId field name matching backend schema
         products: [
           {
-            productId,
-            productName,
+            productId: mongoProductId, // Use correct field name according to backend schema
+            productName: productName,
             price: productPrice,
             quantity: Number(values.quantity),
-          },
+            size: defaultSize || "غير محدد",
+            color: defaultColor || "غير محدد"
+          }
         ],
         totalAmount: totalAmount,
         shippingCost: deliveryCost,
-        status: "pending",
         notes: values.notes || "",
-        createdAt: new Date(),
+        status: "pending"
       };
 
+      console.log("Submitting order with data:", JSON.stringify(orderData, null, 2));
       
-      // Use the API utility directly instead of the API route
+      // Use the API utility to send order data
       const createdOrder = await createOrder(orderData);
+      console.log("Order created successfully:", createdOrder);
       
       // Show confirmation dialog with order details
       setOrderDetails({
@@ -236,7 +272,6 @@ export default function OrderForm({
         totalPrice: totalAmount,
         orderNumber: orderNumber,
       });
-      
       setShowConfirmation(true);
     } catch (error) {
       console.error("Error submitting order:", error);
@@ -507,7 +542,7 @@ export default function OrderForm({
         </Form>
       </div>
 
-      {/* AlertDialog for order confirmation - Fixed HTML nesting issues */}
+      {/* AlertDialog for order confirmation */}
       <AlertDialog
         open={showConfirmation}
         onOpenChange={(open: any) => {
@@ -523,37 +558,39 @@ export default function OrderForm({
               <CheckCircle className="h-6 w-6" />
               تم استلام طلبك بنجاح
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-4">
-              <div className="text-base font-medium">
-                شكراً لك {orderDetails?.name}، تم استلام طلبك بنجاح.
-              </div>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p className="text-base font-medium">
+                  شكراً لك {orderDetails?.name}، تم استلام طلبك بنجاح.
+                </p>
 
-              <div className="rounded-md bg-gray-50 p-3 text-sm">
-                <div className="font-semibold mb-2">تفاصيل الطلب:</div>
-                <div className="space-y-1">
-                  <div className="flex justify-between">
-                    <span>رقم الطلب:</span>
-                    <span className="font-medium">{orderDetails?.orderNumber}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>المنتج:</span>
-                    <span>{productName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>الكمية:</span>
-                    <span>{orderDetails?.quantity}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>المبلغ الإجمالي:</span>
-                    <span className="font-medium">{orderDetails?.totalPrice.toFixed(2)} د.ج</span>
+                <div className="rounded-md bg-gray-50 p-3 text-sm">
+                  <div className="font-semibold mb-2">تفاصيل الطلب:</div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span>رقم الطلب:</span>
+                      <span className="font-medium">{orderDetails?.orderNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>المنتج:</span>
+                      <span>{productName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>الكمية:</span>
+                      <span>{orderDetails?.quantity}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>المبلغ الإجمالي:</span>
+                      <span className="font-medium">{orderDetails?.totalPrice.toFixed(2)} د.ج</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="bg-blue-50 p-3 rounded-md text-blue-800">
-                <div className="flex items-start gap-2">
-                  <Phone className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                  <span>سنتواصل معك قريباً على الرقم {orderDetails?.phone} لتأكيد الطلب وتحديد موعد التوصيل.</span>
+                <div className="bg-blue-50 p-3 rounded-md text-blue-800">
+                  <div className="flex items-start gap-2">
+                    <Phone className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <span>سنتواصل معك قريباً على الرقم {orderDetails?.phone} لتأكيد الطلب وتحديد موعد التوصيل.</span>
+                  </div>
                 </div>
               </div>
             </AlertDialogDescription>

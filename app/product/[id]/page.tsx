@@ -12,22 +12,21 @@ import ColorSelector from "@/components/color-selector"
 import RelatedProducts from "@/components/related-products"
 import DiscountCountdown from "@/components/discount-countdown"
 import ProductImageGallery from "@/components/product-image-gallery"
-import { calculateDiscountedPrice, getOriginalPrice, hasValidDiscount, getDiscountPercentage } from "@/lib/utils" // Fixed import path
+import { calculateDiscountedPrice, getOriginalPrice, hasValidDiscount, getDiscountPercentage } from "@/lib/utils"
 import type { Product, Discount } from "@/lib/types/entities"
 
 interface ProductPageProps {
-  params: {
-    id: string
-  }
+  params: { id: string }
 }
 
-export default async function ProductPage({ params }: ProductPageProps) {
-  // Ensure we have a product ID and properly handle params as an async value
+export default async function ProductPage(props: ProductPageProps) {
+  // Await params if necessary (Next.js App Router)
+  const params = await (props.params instanceof Promise ? props.params : Promise.resolve(props.params));
   const productId = params?.id ? String(params.id) : null;
   if (!productId) {
     notFound();
   }
-  
+
   try {
     // Step 1: Pre-fetch all discounts to ensure we have the complete list
     const allDiscounts = await fetchDiscounts();
@@ -121,6 +120,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
         ? [...new Set([product.image, ...product.images].filter((img): img is string => !!img))]
         : [product.image || "/placeholder.svg?height=600&width=450"];
     
+    // Default color: first color if available
+    const defaultColor = Array.isArray(product.colors) && product.colors.length > 0 ? product.colors[0] : undefined;
 
     return (
       <div className="flex min-h-screen flex-col">
@@ -268,7 +269,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
                         <CardDescription>أدخل بياناتك لطلب هذا المنتج</CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <OrderForm productId={product.id} productName={product.name} productPrice={discountedPrice} />
+                        <OrderForm 
+                          productId={product._id?.toString() || product.id?.toString() || productId} 
+                          productName={product.name} 
+                          productPrice={discountedPrice}
+                          defaultSize={Array.isArray(product.sizes) && product.sizes.length > 0 ? product.sizes[0] : undefined}
+                          defaultColor={Array.isArray(product.colors) && product.colors.length > 0 ? (typeof product.colors[0] === 'string' ? product.colors[0] : product.colors[0]?.name) : undefined}
+                        />
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -279,22 +286,28 @@ export default async function ProductPage({ params }: ProductPageProps) {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-4">
-                          <div>
-                            <h3 className="font-semibold">المميزات</h3>
-                            <ul className="mt-2 list-inside list-disc space-y-1 text-muted-foreground text-sm">
-                              {product.features.map((feature, index) => (
-                                <li key={index}>{feature}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <h3 className="font-semibold">المواد</h3>
-                            <p className="mt-2 text-muted-foreground text-sm">{product.material}</p>
-                          </div>
-                          <div>
-                            <h3 className="font-semibold">تعليمات العناية</h3>
-                            <p className="mt-2 text-muted-foreground text-sm">{product.care}</p>
-                          </div>
+                          {Array.isArray(product.features) && product.features.length > 0 && (
+                            <div>
+                              <h3 className="font-semibold">المميزات</h3>
+                              <ul className="mt-2 list-inside list-disc space-y-1 text-muted-foreground text-sm">
+                                {product.features.map((feature, index) => (
+                                  <li key={index}>{String(feature)}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {product.material && (
+                            <div>
+                              <h3 className="font-semibold">المواد</h3>
+                              <p className="mt-2 text-muted-foreground text-sm">{product.material}</p>
+                            </div>
+                          )}
+                          {product.care && (
+                            <div>
+                              <h3 className="font-semibold">تعليمات العناية</h3>
+                              <p className="mt-2 text-muted-foreground text-sm">{product.care}</p>
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
