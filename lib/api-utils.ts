@@ -1,7 +1,7 @@
 import type { Product, Category, Discount, Order } from "@/lib/types/entities";
 
 // Use environment variable if available, otherwise default to localhost
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://omnimart-api.onrender.com';
 
 // Cache for frequently accessed data
 let productCache: Record<string, { data: Product; timestamp: number }> = {};
