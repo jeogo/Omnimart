@@ -22,7 +22,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import type { Product, Order } from "@/lib/types/entities"
 import { createOrder } from "@/lib/api-utils"
 
 // Inline shipping cost utility
@@ -236,13 +235,11 @@ export default function OrderForm({
       const orderData = {
         customerName: values.name,
         customerPhone: values.phone,
-        customerAddress: values.city,
         wilaya: values.wilaya,
-        
-        // Products array with the required productId field name matching backend schema
+        baladia: values.city,
         products: [
           {
-            productId: mongoProductId, // Use correct field name according to backend schema
+            productId: mongoProductId,
             productName: productName,
             price: productPrice,
             quantity: Number(values.quantity),

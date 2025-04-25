@@ -1,12 +1,13 @@
 import { notFound } from "next/navigation"
-import { fetchDiscounts, fetchProductById, fetchProducts, hasValidDiscount, getDiscountPercentage, formatPrice } from "@/lib/api-utils"
+import { fetchDiscounts, fetchProductById, fetchProducts } from "@/lib/api-utils"
 import OrderForm from "@/components/order-form"
 import SizeSelector from "@/components/size-selector"
 import ColorSelector from "@/components/color-selector"
 import RelatedProducts from "@/components/related-products"
 import DiscountCountdown from "@/components/discount-countdown"
 import ProductImageGallery from "@/components/product-image-gallery"
-import type { Product, Discount } from "@/lib/types/index"
+import { calculateDiscountedPrice, getOriginalPrice, hasValidDiscount, getDiscountPercentage } from "@/lib/utils"
+import type { Product, Discount } from "@/lib/types/entities"
 import Link from "next/link"
 import { ArrowRight, Star, Truck, RefreshCw, ShieldCheck, Phone, Users, Heart, Check, Clock, MessageCircle, Award, ChevronRight, Share2, ShoppingBag, ThumbsUp } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
@@ -27,19 +28,19 @@ export default async function ProductPage({ params }: { params: { id: string } }
   }
 
   try {
-    // Fetch product and related data
-    const [product, allDiscounts] = await Promise.all([
-      fetchProductById(productId, { includeDiscount: true, includeCategory: true }),
-      fetchDiscounts()
-    ]);
+    // Fetch related data
+    const allDiscounts = await fetchDiscounts()
+    // Fetch product details with needed options
+    const product = await fetchProductById(productId, { includeDiscount: true, includeCategory: true })
 
     if (!product) {
       notFound()
     }
 
-    // Find matching discount
+    // Step 3: Find matching discount - try multiple ways to match the discount
     let discountData: Discount | null = null
     if (product.discountId) {
+      // Use multiple matching criteria to find the discount
       discountData = allDiscounts.find(d =>
         d.id === product.discountId ||
         d._id?.toString() === product.discountId ||
@@ -47,7 +48,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
       ) || null
     }
 
-    // Process discount and calculate pricing
+    // Step 4: Process discount and calculate pricing
     const hasDiscount = !!discountData?.isActive || hasValidDiscount(product)
     const discountPercent = discountData?.percentage || getDiscountPercentage(product)
     const originalPrice = product.price
@@ -61,10 +62,10 @@ export default async function ProductPage({ params }: { params: { id: string } }
     const savingsAmount = Math.max(0, originalPrice - discountedPrice)
     const savingsPercentage = originalPrice > 0 ? Math.round((savingsAmount / originalPrice) * 100) : 0
 
-    // Create countdown object
+    // Step 5: Create standardized discount object for countdown component
     let discountObj: { percentage: number, startDate: string, endDate: string, type: string, name: string } | null = null
     if (discountData) {
-      // Extract dates from discount data
+      // Extract and validate dates from discount data
       let startDate = new Date()
       let endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // Default: 7 days from now
 
@@ -72,21 +73,11 @@ export default async function ProductPage({ params }: { params: { id: string } }
         if (discountData.validFrom) {
           const parsedStart = new Date(discountData.validFrom)
           if (!isNaN(parsedStart.getTime())) startDate = parsedStart
-        } else if (discountData.expiresAt) {
-          // Set startDate to 7 days before expiry if only expiresAt exists
-          const expiryDate = new Date(discountData.expiresAt);
-          if (!isNaN(expiryDate.getTime())) {
-            startDate = new Date(expiryDate);
-            startDate.setDate(startDate.getDate() - 7);
-          }
         }
 
         if (discountData.validTo) {
           const parsedEnd = new Date(discountData.validTo)
           if (!isNaN(parsedEnd.getTime())) endDate = parsedEnd
-        } else if (discountData.expiresAt) {
-          const expiryDate = new Date(discountData.expiresAt);
-          if (!isNaN(expiryDate.getTime())) endDate = expiryDate;
         }
       } catch (err) {
         console.error("Error parsing discount dates:", err)
@@ -110,19 +101,22 @@ export default async function ProductPage({ params }: { params: { id: string } }
       }
     }
 
-    // Fetch related products
+    // Step 6: Fetch related products from the same category
     const relatedProducts = await fetchProducts({
       categoryId: product.categoryId,
       includeDiscounts: true,
       includeCategories: true,
       limit: 4
-    });
+    })
 
-    // Fix image handling:
+    // Step 7: Process product images
     const productImages: string[] =
       product.images && product.images.length > 0
-        ? [...new Set([product.imageUrl, ...product.images].filter((img): img is string => !!img))]
-        : [product.imageUrl || "/placeholder.svg?height=600&width=450"];
+        ? [...new Set([product.image, ...product.images].filter((img): img is string => !!img))]
+        : [product.image || "/placeholder.svg?height=600&width=450"]
+
+    // Default color: first color if available
+    const defaultColor = Array.isArray(product.colors) && product.colors.length > 0 ? product.colors[0] : undefined
 
     return (
       <div className="flex min-h-screen flex-col">
@@ -138,7 +132,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
                 <>
                   <ChevronRight className="h-3 w-3 text-slate-400" />
                   <Link href={`/categories/${product.categoryId}`} className="text-sm text-slate-600 hover:text-primary transition-colors">
-                    {typeof product.category === "string" ? product.category : ""}
+                    {product.category}
                   </Link>
                 </>
               )}
@@ -148,7 +142,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
                 <Share2 className="h-4 w-4 text-slate-600" />
               </Button>
               <Badge variant="outline" className="text-xs font-medium bg-primary/5 border-primary/20">
-                {typeof product.category === "string" ? product.category : 'منتج'}
+                {product.category}
               </Badge>
             </div>
           </div>
@@ -156,7 +150,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
 
         <main className="flex-1">
           <div className="container py-8">
-            {/* Enhanced discount countdown */}
+            {/* Enhanced discount countdown with more urgency */}
             {hasDiscount && discountObj && discountPercent > 0 && (
               <div className="mb-6 animate-fadeIn">
                 <Card className="bg-gradient-to-r from-rose-50 to-red-50 border-rose-200 shadow-md overflow-hidden">
@@ -193,7 +187,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
             )}
 
             <div className="grid gap-8 md:grid-cols-2">
-              {/* Product images section */}
+              {/* Enhanced product images section */}
               <div className="animate-fadeIn relative">
                 <ProductImageGallery images={productImages} />
                 
@@ -207,12 +201,12 @@ export default async function ProductPage({ params }: { params: { id: string } }
                 {/* Add limited stock indicator */}
                 <div className="absolute top-4 right-4 bg-amber-500 text-white px-3 py-1.5 rounded-full text-sm font-bold shadow-md">
                   <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse mr-1.5"></span>
-                  متبقي {(product.stock && product.stock > 0) ? product.stock : 5} قطع فقط
+                  متبقي 5 قطع فقط
                 </div>
               </div>
 
               <div className="flex flex-col gap-6">
-                {/* Product info */}
+                {/* Enhanced product info with better visual hierarchy */}
                 <div className="animate-fadeIn">
                   <div className="mb-2 flex items-center gap-1">
                     {Array.from({ length: 5 }).map((_, i) => (
@@ -222,7 +216,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
                       />
                     ))}
                     <span className="mr-2 text-sm text-muted-foreground">
-                      ({typeof product.reviews === "number" ? product.reviews : 12} تقييم)
+                      ({product.reviews || 12} تقييم)
                     </span>
                     <Badge variant="outline" className="ml-auto text-xs bg-green-50 text-green-700 border-green-200">
                       <Check className="h-3.5 w-3.5 mr-1 text-green-600" />
@@ -244,15 +238,15 @@ export default async function ProductPage({ params }: { params: { id: string } }
                       {hasDiscount && savingsAmount > 0 ? (
                         <>
                           <div className="text-3xl font-bold text-rose-600">
-                            {formatPrice(discountedPrice)}
+                            {discountedPrice.toLocaleString()} د.ج
                           </div>
                           <div className="text-lg text-muted-foreground line-through opacity-70">
-                            {formatPrice(originalPrice)}
+                            {originalPrice.toLocaleString()} د.ج
                           </div>
                         </>
                       ) : (
                         <div className="text-3xl font-bold text-primary">
-                          {formatPrice(discountedPrice)}
+                          {discountedPrice.toLocaleString()} د.ج
                         </div>
                       )}
                     </div>
@@ -260,7 +254,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
                     {savingsAmount > 0 && (
                       <div className="flex items-center gap-2 mb-2">
                         <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-200 animate-pulse">
-                          وفر {formatPrice(savingsAmount)}
+                          وفر {savingsAmount.toLocaleString()} د.ج
                         </Badge>
                         <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">
                           خصم {savingsPercentage}%
@@ -271,27 +265,23 @@ export default async function ProductPage({ params }: { params: { id: string } }
                     {/* Payment options */}
                     <div className="text-xs text-slate-500 mt-2">
                       <span className="inline-block ml-1">طرق الدفع: الدفع عند الاستلام</span>
+                      <img src="/payment-icons.png" alt="طرق الدفع" className="h-6 inline-block ml-2" />
                     </div>
                   </div>
 
-                  {/* Availability badges */}
+                  {/* Enhanced availability badges */}
                   <div className="mt-4 flex items-center gap-3">
-                    <Badge variant="outline" className={`font-medium ${product.stock && product.stock > 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                      {product.stock && product.stock > 0 ? (
-                        <>
-                          <Check className="h-4 w-4 mr-1 text-green-600" />
-                          متوفر في المخزون
-                        </>
-                      ) : (
-                        <>
-                          <Clock className="h-4 w-4 mr-1 text-amber-600" />
-                          متوفر بالطلب المسبق
-                        </>
-                      )}
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 font-medium">
+                      <Check className="h-4 w-4 mr-1 text-green-600" />
+                      متوفر في المخزون
                     </Badge>
                     <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-medium">
                       <Truck className="h-4 w-4 mr-1 text-blue-600" />
                       شحن سريع
+                    </Badge>
+                    <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 font-medium">
+                      <Award className="h-4 w-4 mr-1 text-indigo-600" />
+                      ضمان لمدة سنة
                     </Badge>
                   </div>
                 </div>
@@ -305,7 +295,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
                       </div>
                       <div>
                         <h3 className="font-bold text-amber-800 text-lg">اطلب عبر الهاتف</h3>
-                        <p className="text-amber-700 font-medium">0698274648</p>
+                        <p className="text-amber-700 font-medium">0123456789</p>
                         <p className="text-xs text-amber-600 mt-1">متاح من 9 صباحاً إلى 9 مساءً</p>
                       </div>
                     </div>
@@ -326,33 +316,20 @@ export default async function ProductPage({ params }: { params: { id: string } }
                 <Separator />
 
                 {/* Size selector with enhanced guidance */}
-                {Array.isArray(product.sizes) && product.sizes.length > 0 && (
-                  <div className="animate-fadeIn">
-                    <div className="flex items-center justify-between mb-3">
-                      <h2 className="text-lg font-semibold">اختر المقاس</h2>
-                      <Link href="#" className="text-xs text-primary hover:underline">دليل المقاسات</Link>
-                    </div>
-                    <SizeSelector sizes={product.sizes} />
+                <div className="animate-fadeIn">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-lg font-semibold">اختر المقاس</h2>
+                    <Link href="#" className="text-xs text-primary hover:underline">دليل المقاسات</Link>
                   </div>
-                )}
+                  <SizeSelector sizes={product.sizes} />
+                </div>
 
-                {/* Color selector */}
-                {Array.isArray(product.colors) && product.colors.length > 0 && (
+                {product.colors && (
                   <>
                     <Separator />
                     <div className="animate-fadeIn">
                       <h2 className="mb-3 text-lg font-semibold">اختر اللون</h2>
-                      <ColorSelector
-                        colors={
-                          Array.isArray(product.colors)
-                            ? product.colors.map((c) =>
-                                typeof c === "string"
-                                  ? { name: c, value: c }
-                                  : c
-                              )
-                            : []
-                        }
-                      />
+                      <ColorSelector colors={product.colors} />
                     </div>
                   </>
                 )}
@@ -412,7 +389,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
               </div>
             </div>
 
-            {/* Product details and related products sections remain unchanged */}
+            {/* Enhanced product details section with tabs */}
             <div className="mt-12">
               <Tabs defaultValue="details" className="w-full">
                 <TabsList className="w-full grid grid-cols-3 mb-8">
@@ -544,7 +521,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
                                 />
                               ))}
                             </div>
-                            <p className="text-slate-600 text-sm">من {typeof product.reviews === "number" ? product.reviews : 12} تقييم</p>
+                            <p className="text-slate-600 text-sm">من {product.reviews || 12} تقييم</p>
                             
                             <Separator className="my-4" />
                             
@@ -662,19 +639,38 @@ export default async function ProductPage({ params }: { params: { id: string } }
                   عرض المزيد <ChevronRight className="h-4 w-4" />
                 </Link>
               </div>
-              <RelatedProducts
-                products={relatedProducts.map(p => ({
-                  ...p,
-                  description: p.description ?? "",
-                  category: typeof p.category === "string" ? p.category : (p.category && "name" in p.category ? p.category.name : undefined),
-                  discountId: typeof p.discountId === "string" ? p.discountId : undefined,
-                }))}
-              />
+              <RelatedProducts products={relatedProducts.filter(p => p.id !== product.id)} />
+            </div>
+            
+            {/* Add last minute call-to-action */}
+            <div className="mt-16 animate-fadeIn">
+              <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20 shadow-md">
+                <CardContent className="py-8 px-8">
+                  <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div className="text-center md:text-right">
+                      <h3 className="text-2xl font-bold text-primary mb-2">متأكد من اختيارك؟</h3>
+                      <p className="text-slate-700 max-w-md">
+                        احصل على هذا المنتج الآن واستفد من العروض الحصرية والتوصيل السريع
+                      </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button className="px-8 py-6 font-medium text-base bg-primary text-white hover:bg-primary/90 shadow-md">
+                        <ShoppingBag className="h-5 w-5 mr-2" />
+                        اطلب الآن
+                      </Button>
+                      <Button variant="outline" className="px-8 py-6 font-medium text-base border-primary text-primary hover:bg-primary/5">
+                        <Phone className="h-5 w-5 mr-2" />
+                        اتصل بنا
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </main>
         
-        {/* Footer section remains unchanged */}
+        {/* Enhanced footer with trust badges */}
         <footer className="bg-slate-900 text-white py-10 mt-16">
           <div className="container">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8 py-6 border-b border-slate-800">
