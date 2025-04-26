@@ -35,7 +35,7 @@ function getShippingCost(wilaya: string): number {
     wilaya.includes("المدية") ||
     wilaya.includes("عين الدفلى")
   ) {
-    return 250
+    return 450
   }
   if (
     wilaya.includes("وهران") ||
@@ -46,7 +46,7 @@ function getShippingCost(wilaya: string): number {
     wilaya.includes("بجاية") ||
     wilaya.includes("تيزي وزو")
   ) {
-    return 400
+    return 500
   }
   if (
     wilaya.includes("باتنة") ||
@@ -57,10 +57,10 @@ function getShippingCost(wilaya: string): number {
     wilaya.includes("خنشلة") ||
     wilaya.includes("الوادي")
   ) {
-    return 500
+    return 550
   }
   // الجنوب
-  return 650
+  return 700
 }
 
 const formSchema = z.object({

@@ -2,7 +2,7 @@ import axios from 'axios';
 import type { Product, Category, Discount, Order } from "@/lib/types/index";
 
 // Set the API base URL to localhost:5000
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://omnimart-api.onrender.com';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://omnimart-api-m15a.onrender.com';
 
 // Create axios instance with common configuration
 const api = axios.create({
